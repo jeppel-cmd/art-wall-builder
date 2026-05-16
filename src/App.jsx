@@ -716,7 +716,7 @@ h3 { margin: 0 0 10px; font-size: 12px; color: #77706A; letter-spacing: .12em; t
 .hook::after { content: ''; position: absolute; top: -3px; left: 50%; width: 5px; height: 5px; transform: translateX(-50%); border-radius: 50%; background: rgba(70,63,55,.45); }
 .photo-wrap { width: 100%; height: 100%; background: #fff; overflow: hidden; box-shadow: inset 0 0 18px rgba(0,0,0,.18); }
 .photo-wrap.with-mat { background: #FBFAF7; }
-.photo-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+.photo-wrap img { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; background: #fff; }
 .rotate-handle, .resize-handle { position: absolute; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 999px; background: white; color: #2C2D2A; box-shadow: 0 6px 18px rgba(0,0,0,.18); }
 .rotate-handle { right: -16px; top: -48px; }
 .resize-handle { right: -15px; bottom: -15px; cursor: nwse-resize; }
