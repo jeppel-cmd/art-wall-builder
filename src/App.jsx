@@ -23,6 +23,8 @@ const SIDEBAR_WIDTH = 220;
 const GRID_SIZE = 20;
 const MIN_SIZE = 80;
 const FRAME_BORDER = 20;
+const MIN_FRAME_BORDER = 4;
+const MAX_FRAME_BORDER = 48;
 
 const materials = {
   oak: {
@@ -217,6 +219,7 @@ function App() {
         rotation: (i % 2 ? 2 : -2) + startIndex * 0.4,
         material: 'oak',
         customColor: '#A87E68',
+        borderWidth: FRAME_BORDER,
         mat: true,
         aspectLocked: false,
         z: startIndex + i + 1,
@@ -407,6 +410,7 @@ function App() {
           rotation: Number(frame.rotation) || 0,
           material: materials[frame.material] ? frame.material : 'oak',
           customColor: frame.customColor || '#A87E68',
+          borderWidth: clamp(Number(frame.borderWidth) || FRAME_BORDER, MIN_FRAME_BORDER, MAX_FRAME_BORDER),
           mat: Boolean(frame.mat),
           aspectLocked: Boolean(frame.aspectLocked),
           z: Number(frame.z) || index + 1,
@@ -526,7 +530,7 @@ function App() {
                   height: frame.h,
                   zIndex: frame.z,
                   transform: `rotate(${frame.rotation}deg) ${draggingId === frame.id ? 'scale(1.02)' : 'scale(1)'}`,
-                  borderWidth: FRAME_BORDER,
+                  borderWidth: frame.borderWidth ?? FRAME_BORDER,
                   borderImage: frame.material === 'black' || frame.material === 'white' || frame.material === 'custom' ? undefined : `${materialBackground} 30`,
                   borderColor: frame.material === 'black' || frame.material === 'white' || frame.material === 'custom' ? materialBackground : undefined,
                   background: materialBackground,
@@ -562,6 +566,17 @@ function App() {
               {selected.material === 'custom' && (
                 <label className="color-row">Custom color <input type="color" value={selected.customColor} onChange={(e) => updateFrame(selected.id, { customColor: e.target.value })} /></label>
               )}
+              <label className="range-row">
+                <span>Frame width</span>
+                <output>{Math.round(selected.borderWidth ?? FRAME_BORDER)} px</output>
+                <input
+                  type="range"
+                  min={MIN_FRAME_BORDER}
+                  max={MAX_FRAME_BORDER}
+                  value={selected.borderWidth ?? FRAME_BORDER}
+                  onChange={(e) => updateFrame(selected.id, { borderWidth: Number(e.target.value) })}
+                />
+              </label>
               <div className="toggle-row">
                 <button className={selected.mat ? 'active' : ''} onClick={() => updateFrame(selected.id, { mat: !selected.mat })}>Mat {selected.mat ? 'on' : 'off'}</button>
                 <button className={selected.aspectLocked ? 'active' : ''} onClick={() => updateFrame(selected.id, { aspectLocked: !selected.aspectLocked })}>{selected.aspectLocked ? <Lock size={14} /> : <Unlock size={14} />} Ratio</button>
@@ -647,6 +662,9 @@ h3 { margin: 0 0 10px; font-size: 12px; color: #77706A; letter-spacing: .12em; t
 .material-row span { width: 13px; height: 13px; border-radius: 50%; border: 1px solid rgba(0,0,0,.13); }
 .color-row { margin-top: 8px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: #69625B; }
 .color-row input { width: 42px; height: 28px; border: 0; background: transparent; }
+.range-row { margin-top: 10px; display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; align-items: center; font-size: 13px; color: #69625B; }
+.range-row output { color: #34332F; font-variant-numeric: tabular-nums; }
+.range-row input { grid-column: 1 / -1; width: 100%; accent-color: #4A90D9; }
 .toggle-row, .action-row { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 8px; }
 .action-row .danger { color: #9C2F2F; background: #FFF1F1; }
 .toast { position: fixed; left: calc(${SIDEBAR_WIDTH}px + 36px); bottom: 28px; z-index: 2000; background: #20211F; color: white; padding: 11px 14px; border-radius: 999px; box-shadow: 0 12px 34px rgba(0,0,0,.22); font-size: 13px; }
