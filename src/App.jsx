@@ -21,7 +21,7 @@ import {
 
 const SIDEBAR_WIDTH = 220;
 const GRID_SIZE = 20;
-const MIN_SIZE = 80;
+const MIN_SIZE = 40;
 const FRAME_BORDER = 20;
 const MIN_FRAME_BORDER = 4;
 const MAX_FRAME_BORDER = 48;
@@ -170,6 +170,7 @@ function App() {
   const [message, setMessage] = useState('');
   const [capturing, setCapturing] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
+  const [measurementDraft, setMeasurementDraft] = useState({ widthCm: '', heightCm: '' });
   const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
   const loadInputRef = useRef(null);
@@ -179,6 +180,16 @@ function App() {
   useEffect(() => {
     framesRef.current = frames;
   }, [frames]);
+
+  useEffect(() => {
+    const selected = frames.find((frame) => frame.id === selectedId);
+    if (selected) {
+      setMeasurementDraft({
+        widthCm: String(Math.round(selected.widthCm ?? pxToCm(selected.w))),
+        heightCm: String(Math.round(selected.heightCm ?? pxToCm(selected.h))),
+      });
+    }
+  }, [frames, selectedId]);
 
   useEffect(() => {
     return () => {
@@ -257,20 +268,41 @@ function App() {
   }, []);
 
   const updateFrameMeasurement = useCallback((id, key, rawValue) => {
-    const numeric = Number(rawValue);
+    const normalized = String(rawValue).replace(',', '.');
+    const numeric = Number(normalized);
     if (!Number.isFinite(numeric)) return;
     const valueCm = clamp(numeric, MIN_FRAME_CM, MAX_FRAME_CM);
-    const rect = getCanvasRect();
+    const pixels = cmToPx(valueCm);
     setFrames((current) => current.map((frame) => {
       if (frame.id !== id) return frame;
-      if (key === 'widthCm') {
-        const w = Math.max(MIN_SIZE, Math.min(cmToPx(valueCm), (rect?.width || Infinity) - frame.x));
-        return { ...frame, w, widthCm: pxToCm(w) };
-      }
-      const h = Math.max(MIN_SIZE, Math.min(cmToPx(valueCm), (rect?.height || Infinity) - frame.y));
-      return { ...frame, h, heightCm: pxToCm(h) };
+      if (key === 'widthCm') return { ...frame, w: pixels, widthCm: valueCm };
+      return { ...frame, h: pixels, heightCm: valueCm };
     }));
-  }, [getCanvasRect]);
+    setMeasurementDraft((current) => ({ ...current, [key]: String(valueCm) }));
+  }, []);
+
+  const onMeasurementDraftChange = useCallback((key, value) => {
+    if (/^\d{0,3}([,.]\d{0,1})?$/.test(value)) {
+      setMeasurementDraft((current) => ({ ...current, [key]: value }));
+    }
+  }, []);
+
+  const commitMeasurementDraft = useCallback((id, key) => {
+    const value = measurementDraft[key];
+    if (value === '') {
+      const frame = frames.find((item) => item.id === id);
+      if (frame) setMeasurementDraft((current) => ({ ...current, [key]: String(Math.round(frame[key] ?? pxToCm(key === 'widthCm' ? frame.w : frame.h))) }));
+      return;
+    }
+    updateFrameMeasurement(id, key, value);
+  }, [frames, measurementDraft, updateFrameMeasurement]);
+
+  const onMeasurementKeyDown = useCallback((event, id, key) => {
+    if (event.key === 'Enter') {
+      event.currentTarget.blur();
+      commitMeasurementDraft(id, key);
+    }
+  }, [commitMeasurementDraft]);
 
   const selectFrame = useCallback((event, id) => {
     event.stopPropagation();
@@ -619,13 +651,14 @@ function App() {
               <div className="measurement-grid">
                 <label>
                   Width
-                  <span><input type="number" min={MIN_FRAME_CM} max={MAX_FRAME_CM} step="1" value={Math.round(selected.widthCm ?? pxToCm(selected.w))} onChange={(e) => updateFrameMeasurement(selected.id, 'widthCm', e.target.value)} /> cm</span>
+                  <span><input type="text" inputMode="decimal" value={measurementDraft.widthCm} onChange={(e) => onMeasurementDraftChange('widthCm', e.target.value)} onBlur={() => commitMeasurementDraft(selected.id, 'widthCm')} onKeyDown={(e) => onMeasurementKeyDown(e, selected.id, 'widthCm')} /> cm</span>
                 </label>
                 <label>
                   Height
-                  <span><input type="number" min={MIN_FRAME_CM} max={MAX_FRAME_CM} step="1" value={Math.round(selected.heightCm ?? pxToCm(selected.h))} onChange={(e) => updateFrameMeasurement(selected.id, 'heightCm', e.target.value)} /> cm</span>
+                  <span><input type="text" inputMode="decimal" value={measurementDraft.heightCm} onChange={(e) => onMeasurementDraftChange('heightCm', e.target.value)} onBlur={() => commitMeasurementDraft(selected.id, 'heightCm')} onKeyDown={(e) => onMeasurementKeyDown(e, selected.id, 'heightCm')} /> cm</span>
                 </label>
               </div>
+              <p className="measurement-note">Outer frame size. All frames use the same scale, so 60 cm is exactly twice 30 cm on the wall.</p>
               <label className="range-row">
                 <span>Frame width</span>
                 <output>{Math.round(selected.borderWidth ?? FRAME_BORDER)} px</output>
@@ -740,6 +773,7 @@ h3 { margin: 0 0 10px; font-size: 12px; color: #77706A; letter-spacing: .12em; t
 .measurement-grid label { display: grid; gap: 5px; font-size: 12px; color: #69625B; }
 .measurement-grid span { display: flex; align-items: center; gap: 4px; border: 1px solid rgba(57,51,44,.12); background: #F8F5F0; border-radius: 10px; padding: 4px 7px; color: #77706A; }
 .measurement-grid input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: #34332F; font: inherit; font-variant-numeric: tabular-nums; }
+.measurement-note { margin: 6px 0 0; color: #81776D; font-size: 11px; line-height: 1.35; }
 .range-row { margin-top: 10px; display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; align-items: center; font-size: 13px; color: #69625B; }
 .range-row output { color: #34332F; font-variant-numeric: tabular-nums; }
 .range-row input { grid-column: 1 / -1; width: 100%; accent-color: #4A90D9; }
