@@ -216,7 +216,7 @@ function App() {
         y: clamp(baseY + i * 22, 0, Math.max(0, (rect?.height || 600) - 260)),
         w: 200,
         h: 260,
-        rotation: (i % 2 ? 2 : -2) + startIndex * 0.4,
+        rotation: 0,
         material: 'oak',
         customColor: '#A87E68',
         borderWidth: FRAME_BORDER,
