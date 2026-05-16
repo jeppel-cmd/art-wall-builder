@@ -29,6 +29,7 @@ const PX_PER_CM = 4;
 const DEFAULT_FRAME_WIDTH_CM = 50;
 const DEFAULT_FRAME_HEIGHT_CM = 70;
 const DEFAULT_PASSEPARTOUT_CM = 5;
+const DEFAULT_PASSEPARTOUT_COLOR = '#FBFAF7';
 const MIN_FRAME_CM = 10;
 const MAX_FRAME_CM = 250;
 const MAX_PASSEPARTOUT_CM = 20;
@@ -241,6 +242,7 @@ function App() {
         borderWidth: FRAME_BORDER,
         mat: true,
         matWidthCm: DEFAULT_PASSEPARTOUT_CM,
+        matColor: DEFAULT_PASSEPARTOUT_COLOR,
         aspectLocked: false,
         z: startIndex + i + 1,
       }))
@@ -453,6 +455,7 @@ function App() {
           borderWidth: clamp(Number(frame.borderWidth) || FRAME_BORDER, MIN_FRAME_BORDER, MAX_FRAME_BORDER),
           mat: frame.mat !== false,
           matWidthCm: clamp(Number(frame.matWidthCm) || DEFAULT_PASSEPARTOUT_CM, 0, MAX_PASSEPARTOUT_CM),
+          matColor: frame.matColor || DEFAULT_PASSEPARTOUT_COLOR,
           aspectLocked: Boolean(frame.aspectLocked),
           z: Number(frame.z) || index + 1,
         }));
@@ -580,7 +583,10 @@ function App() {
                 <span className="hook" />
                 <div
                   className={`photo-wrap ${frame.mat ? 'with-mat' : ''}`}
-                  style={{ padding: frame.mat ? cmToPx(frame.matWidthCm ?? DEFAULT_PASSEPARTOUT_CM) : 0 }}
+                  style={{
+                    padding: frame.mat ? cmToPx(frame.matWidthCm ?? DEFAULT_PASSEPARTOUT_CM) : 0,
+                    background: frame.mat ? (frame.matColor || DEFAULT_PASSEPARTOUT_COLOR) : '#fff',
+                  }}
                 >
                   <img src={frame.objectUrl || frame.dataUrl} alt={frame.name} draggable="false" />
                 </div>
@@ -644,6 +650,7 @@ function App() {
                   onChange={(e) => updateFrame(selected.id, { matWidthCm: Number(e.target.value) })}
                 />
               </label>
+              <label className="color-row">Passepartout color <input type="color" value={selected.matColor || DEFAULT_PASSEPARTOUT_COLOR} disabled={!selected.mat} onChange={(e) => updateFrame(selected.id, { matColor: e.target.value })} /></label>
               <div className="toggle-row">
                 <button className={selected.mat ? 'active' : ''} onClick={() => updateFrame(selected.id, { mat: !selected.mat })}>Passepartout {selected.mat ? 'on' : 'off'}</button>
                 <button className={selected.aspectLocked ? 'active' : ''} onClick={() => updateFrame(selected.id, { aspectLocked: !selected.aspectLocked })}>{selected.aspectLocked ? <Lock size={14} /> : <Unlock size={14} />} Ratio</button>
