@@ -132,11 +132,30 @@ function pxToCm(value) {
   return Math.round((value / PX_PER_CM) * 10) / 10;
 }
 
+function getImageSizePx(frame) {
+  return {
+    w: cmToPx(Number(frame.widthCm) || pxToCm(frame.w || cmToPx(DEFAULT_FRAME_WIDTH_CM))),
+    h: cmToPx(Number(frame.heightCm) || pxToCm(frame.h || cmToPx(DEFAULT_FRAME_HEIGHT_CM))),
+  };
+}
+
+function getFrameChromePx(frame) {
+  const borderPx = cmToPx(frame.borderWidthCm ?? DEFAULT_FRAME_BORDER_CM);
+  const matPx = frame.mat ? cmToPx(frame.matWidthCm ?? DEFAULT_PASSEPARTOUT_CM) : 0;
+  return { borderPx, matPx, totalX: (borderPx + matPx) * 2, totalY: (borderPx + matPx) * 2 };
+}
+
+function getOuterFrameSizePx(frame) {
+  const image = getImageSizePx(frame);
+  const chrome = getFrameChromePx(frame);
+  return { w: image.w + chrome.totalX, h: image.h + chrome.totalY };
+}
+
 function getMaxMatWidthCm(frame) {
   const widthCm = Number(frame.widthCm) || pxToCm(frame.w || cmToPx(DEFAULT_FRAME_WIDTH_CM));
   const heightCm = Number(frame.heightCm) || pxToCm(frame.h || cmToPx(DEFAULT_FRAME_HEIGHT_CM));
-  const maxByFrame = Math.max(0, Math.min(widthCm, heightCm) / 2 - 1);
-  return Math.round(Math.min(MAX_PASSEPARTOUT_CM, maxByFrame) * 2) / 2;
+  const maxByArtwork = Math.max(0, Math.min(widthCm, heightCm) / 2);
+  return Math.round(Math.min(MAX_PASSEPARTOUT_CM, maxByArtwork) * 2) / 2;
 }
 
 function fileToDataUrl(file) {
@@ -345,7 +364,7 @@ function App() {
       startX: event.clientX,
       startY: event.clientY,
       frame: { ...frame },
-      ratio: frame.w / frame.h,
+      ratio: getOuterFrameSizePx(frame).w / getOuterFrameSizePx(frame).h,
     };
     setDraggingId(frame.id);
   }, []);
@@ -355,7 +374,8 @@ function App() {
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
     const rect = canvasRef.current.getBoundingClientRect();
-    const center = { x: rect.left + frame.x + frame.w / 2, y: rect.top + frame.y + frame.h / 2 };
+    const outer = getOuterFrameSizePx(frame);
+    const center = { x: rect.left + frame.x + outer.w / 2, y: rect.top + frame.y + outer.h / 2 };
     const startAngle = Math.atan2(event.clientY - center.y, event.clientX - center.x) * (180 / Math.PI);
     setSelectedId(frame.id);
     dragState.current = { mode: 'rotate', id: frame.id, pointerId: event.pointerId, frame: { ...frame }, center, startAngle };
@@ -371,23 +391,26 @@ function App() {
     if (state.mode === 'move') {
       const dx = event.clientX - state.startX;
       const dy = event.clientY - state.startY;
-      const x = snap(clamp(state.frame.x + dx, 0, rect.width - state.frame.w), snapToGrid);
-      const y = snap(clamp(state.frame.y + dy, 0, rect.height - state.frame.h), snapToGrid);
+      const outer = getOuterFrameSizePx(state.frame);
+      const x = snap(clamp(state.frame.x + dx, 0, rect.width - outer.w), snapToGrid);
+      const y = snap(clamp(state.frame.y + dy, 0, rect.height - outer.h), snapToGrid);
       updateFrame(state.id, { x, y });
     }
     if (state.mode === 'resize') {
       const dx = event.clientX - state.startX;
       const dy = event.clientY - state.startY;
-      let w = Math.max(MIN_SIZE, state.frame.w + dx);
-      let h = state.frame.aspectLocked ? w / state.ratio : Math.max(MIN_SIZE, state.frame.h + dy);
-      if (state.frame.aspectLocked && state.frame.h + dy > h) {
-        h = Math.max(MIN_SIZE, state.frame.h + dy);
-        w = h * state.ratio;
+      const chrome = getFrameChromePx(state.frame);
+      const startOuter = getOuterFrameSizePx(state.frame);
+      let outerW = Math.max(MIN_SIZE + chrome.totalX, startOuter.w + dx);
+      let outerH = state.frame.aspectLocked ? outerW / state.ratio : Math.max(MIN_SIZE + chrome.totalY, startOuter.h + dy);
+      if (state.frame.aspectLocked && startOuter.h + dy > outerH) {
+        outerH = Math.max(MIN_SIZE + chrome.totalY, startOuter.h + dy);
+        outerW = outerH * state.ratio;
       }
-      w = snap(Math.min(w, rect.width - state.frame.x), snapToGrid);
-      h = snap(Math.min(h, rect.height - state.frame.y), snapToGrid);
-      const nextW = Math.max(MIN_SIZE, w);
-      const nextH = Math.max(MIN_SIZE, h);
+      outerW = snap(Math.min(outerW, rect.width - state.frame.x), snapToGrid);
+      outerH = snap(Math.min(outerH, rect.height - state.frame.y), snapToGrid);
+      const nextW = Math.max(MIN_SIZE, outerW - chrome.totalX);
+      const nextH = Math.max(MIN_SIZE, outerH - chrome.totalY);
       updateFrame(state.id, { w: nextW, h: nextH, widthCm: pxToCm(nextW), heightCm: pxToCm(nextH) });
     }
     if (state.mode === 'rotate') {
@@ -515,7 +538,7 @@ function App() {
   const selectedMaxMatWidthCm = selected ? getMaxMatWidthCm(selected) : MAX_PASSEPARTOUT_CM;
   const canvasRect = canvasRef.current?.getBoundingClientRect();
   const panelStyle = selected && canvasRect ? {
-    left: clamp(selected.x + selected.w + 18, 14, canvasRect.width - 270),
+    left: clamp(selected.x + getOuterFrameSizePx(selected).w + 18, 14, canvasRect.width - 270),
     top: clamp(selected.y + 12, 14, canvasRect.height - 472),
   } : {};
 
@@ -618,6 +641,8 @@ function App() {
             const selectedFrame = selectedId === frame.id;
             const materialBackground = frame.material === 'custom' ? frame.customColor : materials[frame.material]?.style;
             const matWidthCm = Math.min(frame.matWidthCm ?? DEFAULT_PASSEPARTOUT_CM, getMaxMatWidthCm(frame));
+            const imageSize = getImageSizePx(frame);
+            const outerSize = getOuterFrameSizePx({ ...frame, matWidthCm });
             return (
               <article
                 key={frame.id}
@@ -627,8 +652,8 @@ function App() {
                 style={{
                   left: frame.x,
                   top: frame.y,
-                  width: frame.w,
-                  height: frame.h,
+                  width: outerSize.w,
+                  height: outerSize.h,
                   zIndex: frame.z,
                   transform: `rotate(${frame.rotation}deg) ${draggingId === frame.id ? 'scale(1.02)' : 'scale(1)'}`,
                   borderWidth: cmToPx(frame.borderWidthCm ?? DEFAULT_FRAME_BORDER_CM),
@@ -645,7 +670,7 @@ function App() {
                     background: frame.mat ? (frame.matColor || DEFAULT_PASSEPARTOUT_COLOR) : '#fff',
                   }}
                 >
-                  <img src={frame.objectUrl || frame.dataUrl} alt={frame.name} draggable="false" />
+                  <img src={frame.objectUrl || frame.dataUrl} alt={frame.name} draggable="false" style={{ width: imageSize.w, height: imageSize.h }} />
                 </div>
                 {selectedFrame && (
                   <>
@@ -683,7 +708,7 @@ function App() {
                   <span><input type="text" inputMode="decimal" value={measurementDraft.heightCm} onChange={(e) => onMeasurementDraftChange('heightCm', e.target.value)} onBlur={() => commitMeasurementDraft(selected.id, 'heightCm')} onKeyDown={(e) => onMeasurementKeyDown(e, selected.id, 'heightCm')} /> cm</span>
                 </label>
               </div>
-              <p className="measurement-note">Outer frame size. All frames use the same scale, so 60 cm is exactly twice 30 cm on the wall.</p>
+              <p className="measurement-note">Artwork/photo size. Frame width and passepartout are added around it, so changing those sliders will not change this measurement.</p>
               <label className="range-row">
                 <span>Frame width</span>
                 <output>{selected.borderWidthCm ?? DEFAULT_FRAME_BORDER_CM} cm</output>
@@ -709,7 +734,7 @@ function App() {
                   onChange={(e) => updateFrame(selected.id, { matWidthCm: Math.min(Number(e.target.value), selectedMaxMatWidthCm) })}
                 />
               </label>
-              <p className="measurement-note">Passepartout is limited by the selected frame size so the opening stays proportional.</p>
+              <p className="measurement-note">Passepartout is added around the fixed artwork size; the full outer frame grows/shrinks with this slider.</p>
               <label className="color-row">Passepartout color <input type="color" value={selected.matColor || DEFAULT_PASSEPARTOUT_COLOR} disabled={!selected.mat} onChange={(e) => updateFrame(selected.id, { matColor: e.target.value })} /></label>
               <div className="toggle-row">
                 <button className={selected.mat ? 'active' : ''} onClick={() => updateFrame(selected.id, { mat: !selected.mat })}>Passepartout {selected.mat ? 'on' : 'off'}</button>
