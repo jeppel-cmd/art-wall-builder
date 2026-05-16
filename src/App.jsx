@@ -132,6 +132,11 @@ function pxToCm(value) {
   return Math.round((value / PX_PER_CM) * 10) / 10;
 }
 
+function formatCm(value) {
+  const rounded = Math.round(Number(value) * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
 function getImageSizePx(frame) {
   return {
     w: cmToPx(Number(frame.widthCm) || pxToCm(frame.w || cmToPx(DEFAULT_FRAME_WIDTH_CM))),
@@ -536,6 +541,20 @@ function App() {
 
   const selected = frames.find((frame) => frame.id === selectedId);
   const selectedMaxMatWidthCm = selected ? getMaxMatWidthCm(selected) : MAX_PASSEPARTOUT_CM;
+  const selectedMeasurements = selected ? (() => {
+    const artworkWidth = Number(selected.widthCm) || pxToCm(selected.w);
+    const artworkHeight = Number(selected.heightCm) || pxToCm(selected.h);
+    const frameWidth = Number(selected.borderWidthCm ?? DEFAULT_FRAME_BORDER_CM);
+    const matWidth = selected.mat ? Math.min(Number(selected.matWidthCm ?? DEFAULT_PASSEPARTOUT_CM), selectedMaxMatWidthCm) : 0;
+    return {
+      artworkWidth,
+      artworkHeight,
+      frameWidth,
+      matWidth,
+      outerWidth: artworkWidth + 2 * (frameWidth + matWidth),
+      outerHeight: artworkHeight + 2 * (frameWidth + matWidth),
+    };
+  })() : null;
   const canvasRect = canvasRef.current?.getBoundingClientRect();
   const panelStyle = selected && canvasRect ? {
     left: clamp(selected.x + getOuterFrameSizePx(selected).w + 18, 14, canvasRect.width - 270),
@@ -709,6 +728,20 @@ function App() {
                 </label>
               </div>
               <p className="measurement-note">Artwork/photo size. Frame width and passepartout are added around it, so changing those sliders will not change this measurement.</p>
+              {selectedMeasurements && (
+                <div className="measure-summary">
+                  <div>
+                    <strong>Ydre rammemål</strong>
+                    <span>{formatCm(selectedMeasurements.outerWidth)} × {formatCm(selectedMeasurements.outerHeight)} cm</span>
+                    <small>Bredde × højde inkl. ramme og passepartout</small>
+                  </div>
+                  <div>
+                    <strong>Indre passepartout-hul</strong>
+                    <span>{formatCm(selectedMeasurements.artworkWidth)} × {formatCm(selectedMeasurements.artworkHeight)} cm</span>
+                    <small>Billedets/åbningens mål</small>
+                  </div>
+                </div>
+              )}
               <label className="range-row">
                 <span>Frame width</span>
                 <output>{selected.borderWidthCm ?? DEFAULT_FRAME_BORDER_CM} cm</output>
@@ -831,6 +864,11 @@ h3 { margin: 0 0 10px; font-size: 12px; color: #77706A; letter-spacing: .12em; t
 .measurement-grid span { display: flex; align-items: center; gap: 4px; border: 1px solid rgba(57,51,44,.12); background: #F8F5F0; border-radius: 10px; padding: 4px 7px; color: #77706A; }
 .measurement-grid input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: #34332F; font: inherit; font-variant-numeric: tabular-nums; }
 .measurement-note { margin: 6px 0 0; color: #81776D; font-size: 11px; line-height: 1.35; }
+.measure-summary { margin-top: 10px; display: grid; gap: 7px; }
+.measure-summary div { background: #F8F5F0; border: 1px solid rgba(57,51,44,.1); border-radius: 12px; padding: 8px 9px; }
+.measure-summary strong { display: block; color: #59524B; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+.measure-summary span { display: block; margin-top: 3px; color: #20211F; font-weight: 700; font-variant-numeric: tabular-nums; }
+.measure-summary small { display: block; margin-top: 2px; color: #81776D; font-size: 10.5px; line-height: 1.25; }
 .range-row { margin-top: 10px; display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; align-items: center; font-size: 13px; color: #69625B; }
 .range-row output { color: #34332F; font-variant-numeric: tabular-nums; }
 .range-row input { grid-column: 1 / -1; width: 100%; accent-color: #4A90D9; }
