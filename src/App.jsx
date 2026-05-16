@@ -132,6 +132,13 @@ function pxToCm(value) {
   return Math.round((value / PX_PER_CM) * 10) / 10;
 }
 
+function getMaxMatWidthCm(frame) {
+  const widthCm = Number(frame.widthCm) || pxToCm(frame.w || cmToPx(DEFAULT_FRAME_WIDTH_CM));
+  const heightCm = Number(frame.heightCm) || pxToCm(frame.h || cmToPx(DEFAULT_FRAME_HEIGHT_CM));
+  const maxByFrame = Math.max(0, Math.min(widthCm, heightCm) / 2 - 1);
+  return Math.round(Math.min(MAX_PASSEPARTOUT_CM, maxByFrame) * 2) / 2;
+}
+
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -505,6 +512,7 @@ function App() {
   }, [showMessage]);
 
   const selected = frames.find((frame) => frame.id === selectedId);
+  const selectedMaxMatWidthCm = selected ? getMaxMatWidthCm(selected) : MAX_PASSEPARTOUT_CM;
   const canvasRect = canvasRef.current?.getBoundingClientRect();
   const panelStyle = selected && canvasRect ? {
     left: clamp(selected.x + selected.w + 18, 14, canvasRect.width - 270),
@@ -609,6 +617,7 @@ function App() {
           {frames.map((frame) => {
             const selectedFrame = selectedId === frame.id;
             const materialBackground = frame.material === 'custom' ? frame.customColor : materials[frame.material]?.style;
+            const matWidthCm = Math.min(frame.matWidthCm ?? DEFAULT_PASSEPARTOUT_CM, getMaxMatWidthCm(frame));
             return (
               <article
                 key={frame.id}
@@ -632,7 +641,7 @@ function App() {
                 <div
                   className={`photo-wrap ${frame.mat ? 'with-mat' : ''}`}
                   style={{
-                    padding: frame.mat ? cmToPx(frame.matWidthCm ?? DEFAULT_PASSEPARTOUT_CM) : 0,
+                    padding: frame.mat ? cmToPx(matWidthCm) : 0,
                     background: frame.mat ? (frame.matColor || DEFAULT_PASSEPARTOUT_COLOR) : '#fff',
                   }}
                 >
@@ -689,17 +698,18 @@ function App() {
               </label>
               <label className="range-row">
                 <span>Passepartout</span>
-                <output>{selected.mat ? `${selected.matWidthCm ?? DEFAULT_PASSEPARTOUT_CM} cm` : 'off'}</output>
+                <output>{selected.mat ? `${Math.min(selected.matWidthCm ?? DEFAULT_PASSEPARTOUT_CM, selectedMaxMatWidthCm)} cm` : 'off'}</output>
                 <input
                   type="range"
                   min="0"
-                  max={MAX_PASSEPARTOUT_CM}
+                  max={selectedMaxMatWidthCm}
                   step="0.5"
-                  value={selected.matWidthCm ?? DEFAULT_PASSEPARTOUT_CM}
+                  value={Math.min(selected.matWidthCm ?? DEFAULT_PASSEPARTOUT_CM, selectedMaxMatWidthCm)}
                   disabled={!selected.mat}
-                  onChange={(e) => updateFrame(selected.id, { matWidthCm: Number(e.target.value) })}
+                  onChange={(e) => updateFrame(selected.id, { matWidthCm: Math.min(Number(e.target.value), selectedMaxMatWidthCm) })}
                 />
               </label>
+              <p className="measurement-note">Passepartout is limited by the selected frame size so the opening stays proportional.</p>
               <label className="color-row">Passepartout color <input type="color" value={selected.matColor || DEFAULT_PASSEPARTOUT_COLOR} disabled={!selected.mat} onChange={(e) => updateFrame(selected.id, { matColor: e.target.value })} /></label>
               <div className="toggle-row">
                 <button className={selected.mat ? 'active' : ''} onClick={() => updateFrame(selected.id, { mat: !selected.mat })}>Passepartout {selected.mat ? 'on' : 'off'}</button>
@@ -778,7 +788,7 @@ h3 { margin: 0 0 10px; font-size: 12px; color: #77706A; letter-spacing: .12em; t
 .hook::after { content: ''; position: absolute; top: -3px; left: 50%; width: 5px; height: 5px; transform: translateX(-50%); border-radius: 50%; background: rgba(70,63,55,.45); }
 .photo-wrap { width: 100%; height: 100%; background: #fff; overflow: hidden; box-shadow: inset 0 0 18px rgba(0,0,0,.18); }
 .photo-wrap.with-mat { background: #FBFAF7; }
-.photo-wrap img { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; background: #fff; }
+.photo-wrap img { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; background: transparent; }
 .rotate-handle, .resize-handle { position: absolute; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 999px; background: white; color: #2C2D2A; box-shadow: 0 6px 18px rgba(0,0,0,.18); }
 .rotate-handle { right: -16px; top: -48px; }
 .resize-handle { right: -15px; bottom: -15px; cursor: nwse-resize; }
