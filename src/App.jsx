@@ -25,6 +25,13 @@ const MIN_SIZE = 80;
 const FRAME_BORDER = 20;
 const MIN_FRAME_BORDER = 4;
 const MAX_FRAME_BORDER = 48;
+const PX_PER_CM = 4;
+const DEFAULT_FRAME_WIDTH_CM = 50;
+const DEFAULT_FRAME_HEIGHT_CM = 70;
+const DEFAULT_PASSEPARTOUT_CM = 5;
+const MIN_FRAME_CM = 10;
+const MAX_FRAME_CM = 250;
+const MAX_PASSEPARTOUT_CM = 20;
 
 const materials = {
   oak: {
@@ -116,6 +123,14 @@ function snap(value, enabled) {
   return enabled ? Math.round(value / GRID_SIZE) * GRID_SIZE : value;
 }
 
+function cmToPx(value) {
+  return value * PX_PER_CM;
+}
+
+function pxToCm(value) {
+  return Math.round((value / PX_PER_CM) * 10) / 10;
+}
+
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -192,7 +207,7 @@ function App() {
       const jitter = cycle * 26;
       const x = clamp((box[0] / 100) * rect.width - w / 2 + jitter, 0, rect.width - w);
       const y = clamp((box[1] / 100) * rect.height - h / 2 + jitter, 0, rect.height - h);
-      return { ...frame, x, y, w, h };
+      return { ...frame, x, y, w, h, widthCm: pxToCm(w), heightCm: pxToCm(h) };
     });
   }, [activePreset, frames, getCanvasRect]);
 
@@ -203,8 +218,10 @@ function App() {
       return;
     }
     const rect = getCanvasRect();
-    const baseX = rect ? rect.width / 2 - 100 : 280;
-    const baseY = rect ? rect.height / 2 - 130 : 220;
+    const defaultW = cmToPx(DEFAULT_FRAME_WIDTH_CM);
+    const defaultH = cmToPx(DEFAULT_FRAME_HEIGHT_CM);
+    const baseX = rect ? rect.width / 2 - defaultW / 2 : 280;
+    const baseY = rect ? rect.height / 2 - defaultH / 2 : 220;
     const startIndex = frames.length;
     const newFrames = await Promise.all(
       accepted.map(async (file, i) => ({
@@ -212,15 +229,18 @@ function App() {
         objectUrl: URL.createObjectURL(file),
         dataUrl: await fileToDataUrl(file),
         name: file.name,
-        x: clamp(baseX + i * 24, 0, Math.max(0, (rect?.width || 800) - 200)),
-        y: clamp(baseY + i * 22, 0, Math.max(0, (rect?.height || 600) - 260)),
-        w: 200,
-        h: 260,
+        x: clamp(baseX + i * 24, 0, Math.max(0, (rect?.width || 800) - defaultW)),
+        y: clamp(baseY + i * 22, 0, Math.max(0, (rect?.height || 600) - defaultH)),
+        w: defaultW,
+        h: defaultH,
+        widthCm: DEFAULT_FRAME_WIDTH_CM,
+        heightCm: DEFAULT_FRAME_HEIGHT_CM,
         rotation: 0,
         material: 'oak',
         customColor: '#A87E68',
         borderWidth: FRAME_BORDER,
         mat: true,
+        matWidthCm: DEFAULT_PASSEPARTOUT_CM,
         aspectLocked: false,
         z: startIndex + i + 1,
       }))
@@ -233,6 +253,22 @@ function App() {
   const updateFrame = useCallback((id, patch) => {
     setFrames((current) => current.map((frame) => (frame.id === id ? { ...frame, ...patch } : frame)));
   }, []);
+
+  const updateFrameMeasurement = useCallback((id, key, rawValue) => {
+    const numeric = Number(rawValue);
+    if (!Number.isFinite(numeric)) return;
+    const valueCm = clamp(numeric, MIN_FRAME_CM, MAX_FRAME_CM);
+    const rect = getCanvasRect();
+    setFrames((current) => current.map((frame) => {
+      if (frame.id !== id) return frame;
+      if (key === 'widthCm') {
+        const w = Math.max(MIN_SIZE, Math.min(cmToPx(valueCm), (rect?.width || Infinity) - frame.x));
+        return { ...frame, w, widthCm: pxToCm(w) };
+      }
+      const h = Math.max(MIN_SIZE, Math.min(cmToPx(valueCm), (rect?.height || Infinity) - frame.y));
+      return { ...frame, h, heightCm: pxToCm(h) };
+    }));
+  }, [getCanvasRect]);
 
   const selectFrame = useCallback((event, id) => {
     event.stopPropagation();
@@ -308,7 +344,9 @@ function App() {
       }
       w = snap(Math.min(w, rect.width - state.frame.x), snapToGrid);
       h = snap(Math.min(h, rect.height - state.frame.y), snapToGrid);
-      updateFrame(state.id, { w: Math.max(MIN_SIZE, w), h: Math.max(MIN_SIZE, h) });
+      const nextW = Math.max(MIN_SIZE, w);
+      const nextH = Math.max(MIN_SIZE, h);
+      updateFrame(state.id, { w: nextW, h: nextH, widthCm: pxToCm(nextW), heightCm: pxToCm(nextH) });
     }
     if (state.mode === 'rotate') {
       const angle = Math.atan2(event.clientY - state.center.y, event.clientX - state.center.x) * (180 / Math.PI);
@@ -333,7 +371,7 @@ function App() {
   }, []);
 
   const duplicateFrame = useCallback((frame) => {
-    const copy = { ...frame, id: uid(), x: frame.x + 28, y: frame.y + 28, rotation: frame.rotation + 1.5, z: Math.max(0, ...frames.map((f) => f.z)) + 1 };
+    const copy = { ...frame, id: uid(), x: frame.x + 28, y: frame.y + 28, rotation: frame.rotation, z: Math.max(0, ...frames.map((f) => f.z)) + 1 };
     setFrames((current) => [...current, copy]);
     setSelectedId(copy.id);
   }, [frames]);
@@ -405,13 +443,16 @@ function App() {
           name: frame.name || `Loaded artwork ${index + 1}`,
           x: Number(frame.x) || 80,
           y: Number(frame.y) || 80,
-          w: Math.max(MIN_SIZE, Number(frame.w) || 180),
-          h: Math.max(MIN_SIZE, Number(frame.h) || 220),
+          w: Math.max(MIN_SIZE, Number(frame.w) || cmToPx(Number(frame.widthCm) || DEFAULT_FRAME_WIDTH_CM)),
+          h: Math.max(MIN_SIZE, Number(frame.h) || cmToPx(Number(frame.heightCm) || DEFAULT_FRAME_HEIGHT_CM)),
+          widthCm: Number(frame.widthCm) || pxToCm(Math.max(MIN_SIZE, Number(frame.w) || cmToPx(DEFAULT_FRAME_WIDTH_CM))),
+          heightCm: Number(frame.heightCm) || pxToCm(Math.max(MIN_SIZE, Number(frame.h) || cmToPx(DEFAULT_FRAME_HEIGHT_CM))),
           rotation: Number(frame.rotation) || 0,
           material: materials[frame.material] ? frame.material : 'oak',
           customColor: frame.customColor || '#A87E68',
           borderWidth: clamp(Number(frame.borderWidth) || FRAME_BORDER, MIN_FRAME_BORDER, MAX_FRAME_BORDER),
-          mat: Boolean(frame.mat),
+          mat: frame.mat !== false,
+          matWidthCm: clamp(Number(frame.matWidthCm) || DEFAULT_PASSEPARTOUT_CM, 0, MAX_PASSEPARTOUT_CM),
           aspectLocked: Boolean(frame.aspectLocked),
           z: Number(frame.z) || index + 1,
         }));
@@ -428,8 +469,8 @@ function App() {
   const selected = frames.find((frame) => frame.id === selectedId);
   const canvasRect = canvasRef.current?.getBoundingClientRect();
   const panelStyle = selected && canvasRect ? {
-    left: clamp(selected.x + selected.w + 18, 14, canvasRect.width - 238),
-    top: clamp(selected.y + 12, 14, canvasRect.height - 292),
+    left: clamp(selected.x + selected.w + 18, 14, canvasRect.width - 270),
+    top: clamp(selected.y + 12, 14, canvasRect.height - 472),
   } : {};
 
   return (
@@ -537,7 +578,10 @@ function App() {
                 }}
               >
                 <span className="hook" />
-                <div className={`photo-wrap ${frame.mat ? 'with-mat' : ''}`}>
+                <div
+                  className={`photo-wrap ${frame.mat ? 'with-mat' : ''}`}
+                  style={{ padding: frame.mat ? cmToPx(frame.matWidthCm ?? DEFAULT_PASSEPARTOUT_CM) : 0 }}
+                >
                   <img src={frame.objectUrl || frame.dataUrl} alt={frame.name} draggable="false" />
                 </div>
                 {selectedFrame && (
@@ -566,6 +610,16 @@ function App() {
               {selected.material === 'custom' && (
                 <label className="color-row">Custom color <input type="color" value={selected.customColor} onChange={(e) => updateFrame(selected.id, { customColor: e.target.value })} /></label>
               )}
+              <div className="measurement-grid">
+                <label>
+                  Width
+                  <span><input type="number" min={MIN_FRAME_CM} max={MAX_FRAME_CM} step="1" value={Math.round(selected.widthCm ?? pxToCm(selected.w))} onChange={(e) => updateFrameMeasurement(selected.id, 'widthCm', e.target.value)} /> cm</span>
+                </label>
+                <label>
+                  Height
+                  <span><input type="number" min={MIN_FRAME_CM} max={MAX_FRAME_CM} step="1" value={Math.round(selected.heightCm ?? pxToCm(selected.h))} onChange={(e) => updateFrameMeasurement(selected.id, 'heightCm', e.target.value)} /> cm</span>
+                </label>
+              </div>
               <label className="range-row">
                 <span>Frame width</span>
                 <output>{Math.round(selected.borderWidth ?? FRAME_BORDER)} px</output>
@@ -577,8 +631,21 @@ function App() {
                   onChange={(e) => updateFrame(selected.id, { borderWidth: Number(e.target.value) })}
                 />
               </label>
+              <label className="range-row">
+                <span>Passepartout</span>
+                <output>{selected.mat ? `${selected.matWidthCm ?? DEFAULT_PASSEPARTOUT_CM} cm` : 'off'}</output>
+                <input
+                  type="range"
+                  min="0"
+                  max={MAX_PASSEPARTOUT_CM}
+                  step="0.5"
+                  value={selected.matWidthCm ?? DEFAULT_PASSEPARTOUT_CM}
+                  disabled={!selected.mat}
+                  onChange={(e) => updateFrame(selected.id, { matWidthCm: Number(e.target.value) })}
+                />
+              </label>
               <div className="toggle-row">
-                <button className={selected.mat ? 'active' : ''} onClick={() => updateFrame(selected.id, { mat: !selected.mat })}>Mat {selected.mat ? 'on' : 'off'}</button>
+                <button className={selected.mat ? 'active' : ''} onClick={() => updateFrame(selected.id, { mat: !selected.mat })}>Passepartout {selected.mat ? 'on' : 'off'}</button>
                 <button className={selected.aspectLocked ? 'active' : ''} onClick={() => updateFrame(selected.id, { aspectLocked: !selected.aspectLocked })}>{selected.aspectLocked ? <Lock size={14} /> : <Unlock size={14} />} Ratio</button>
               </div>
               <div className="action-row">
@@ -648,12 +715,12 @@ h3 { margin: 0 0 10px; font-size: 12px; color: #77706A; letter-spacing: .12em; t
 .hook { position: absolute; top: -16px; left: 50%; transform: translateX(-50%); width: 28px; height: 13px; border-top: 1px solid rgba(70,63,55,.38); border-radius: 50% 50% 0 0; pointer-events: none; }
 .hook::after { content: ''; position: absolute; top: -3px; left: 50%; width: 5px; height: 5px; transform: translateX(-50%); border-radius: 50%; background: rgba(70,63,55,.45); }
 .photo-wrap { width: 100%; height: 100%; background: #fff; overflow: hidden; box-shadow: inset 0 0 18px rgba(0,0,0,.18); }
-.photo-wrap.with-mat { padding: 12px; background: #FBFAF7; }
+.photo-wrap.with-mat { background: #FBFAF7; }
 .photo-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
 .rotate-handle, .resize-handle { position: absolute; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 999px; background: white; color: #2C2D2A; box-shadow: 0 6px 18px rgba(0,0,0,.18); }
 .rotate-handle { right: -16px; top: -48px; }
 .resize-handle { right: -15px; bottom: -15px; cursor: nwse-resize; }
-.floating-panel { position: absolute; z-index: 999; width: 224px; background: rgba(255,255,255,.94); border: 1px solid rgba(55,48,40,.1); border-radius: 18px; padding: 12px; box-shadow: 0 18px 44px rgba(39,34,27,.18); backdrop-filter: blur(16px); }
+.floating-panel { position: absolute; z-index: 999; width: 256px; background: rgba(255,255,255,.94); border: 1px solid rgba(55,48,40,.1); border-radius: 18px; padding: 12px; box-shadow: 0 18px 44px rgba(39,34,27,.18); backdrop-filter: blur(16px); }
 .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .panel-head button { background: #F1EEE9; border-radius: 999px; width: 24px; height: 24px; display: grid; place-items: center; }
 .material-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
@@ -662,6 +729,10 @@ h3 { margin: 0 0 10px; font-size: 12px; color: #77706A; letter-spacing: .12em; t
 .material-row span { width: 13px; height: 13px; border-radius: 50%; border: 1px solid rgba(0,0,0,.13); }
 .color-row { margin-top: 8px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: #69625B; }
 .color-row input { width: 42px; height: 28px; border: 0; background: transparent; }
+.measurement-grid { margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.measurement-grid label { display: grid; gap: 5px; font-size: 12px; color: #69625B; }
+.measurement-grid span { display: flex; align-items: center; gap: 4px; border: 1px solid rgba(57,51,44,.12); background: #F8F5F0; border-radius: 10px; padding: 4px 7px; color: #77706A; }
+.measurement-grid input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: #34332F; font: inherit; font-variant-numeric: tabular-nums; }
 .range-row { margin-top: 10px; display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; align-items: center; font-size: 13px; color: #69625B; }
 .range-row output { color: #34332F; font-variant-numeric: tabular-nums; }
 .range-row input { grid-column: 1 / -1; width: 100%; accent-color: #4A90D9; }
@@ -683,7 +754,7 @@ h3 { margin: 0 0 10px; font-size: 12px; color: #77706A; letter-spacing: .12em; t
   .top-note { display: none; }
   .wall-canvas { min-height: calc(100vh - 245px); border-radius: 18px; }
   .toast { left: 20px; right: 20px; bottom: 236px; border-radius: 16px; }
-  .floating-panel { width: 210px; }
+  .floating-panel { width: 230px; }
 }
 `;
 
