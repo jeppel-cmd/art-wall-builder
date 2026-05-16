@@ -22,9 +22,9 @@ import {
 const SIDEBAR_WIDTH = 220;
 const GRID_SIZE = 20;
 const MIN_SIZE = 40;
-const FRAME_BORDER = 20;
-const MIN_FRAME_BORDER = 4;
-const MAX_FRAME_BORDER = 48;
+const DEFAULT_FRAME_BORDER_CM = 5;
+const MIN_FRAME_BORDER_CM = 1;
+const MAX_FRAME_BORDER_CM = 12;
 const PX_PER_CM = 4;
 const DEFAULT_FRAME_WIDTH_CM = 50;
 const DEFAULT_FRAME_HEIGHT_CM = 70;
@@ -165,6 +165,7 @@ function App() {
   const [frames, setFrames] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [snapToGrid, setSnapToGrid] = useState(false);
+  const [showCmGrid, setShowCmGrid] = useState(false);
   const [wall, setWall] = useState('warm');
   const [activePreset, setActivePreset] = useState('cluster');
   const [message, setMessage] = useState('');
@@ -250,7 +251,7 @@ function App() {
         rotation: 0,
         material: 'oak',
         customColor: '#A87E68',
-        borderWidth: FRAME_BORDER,
+        borderWidthCm: DEFAULT_FRAME_BORDER_CM,
         mat: true,
         matWidthCm: DEFAULT_PASSEPARTOUT_CM,
         matColor: DEFAULT_PASSEPARTOUT_COLOR,
@@ -450,6 +451,7 @@ function App() {
       version: 1,
       wall,
       snapToGrid,
+      showCmGrid,
       frames: frames.map(({ id, objectUrl, ...frame }) => ({ ...frame, id })),
     };
     const blob = new Blob([JSON.stringify(layout, null, 2)], { type: 'application/json' });
@@ -459,7 +461,7 @@ function App() {
     link.click();
     URL.revokeObjectURL(link.href);
     showMessage('Layout JSON downloaded.');
-  }, [frames, snapToGrid, wall, showMessage]);
+  }, [frames, snapToGrid, showCmGrid, wall, showMessage]);
 
   const loadLayout = useCallback(async (file) => {
     try {
@@ -484,7 +486,7 @@ function App() {
           rotation: Number(frame.rotation) || 0,
           material: materials[frame.material] ? frame.material : 'oak',
           customColor: frame.customColor || '#A87E68',
-          borderWidth: clamp(Number(frame.borderWidth) || FRAME_BORDER, MIN_FRAME_BORDER, MAX_FRAME_BORDER),
+          borderWidthCm: clamp(Number(frame.borderWidthCm) || pxToCm(Number(frame.borderWidth) || cmToPx(DEFAULT_FRAME_BORDER_CM)), MIN_FRAME_BORDER_CM, MAX_FRAME_BORDER_CM),
           mat: frame.mat !== false,
           matWidthCm: clamp(Number(frame.matWidthCm) || DEFAULT_PASSEPARTOUT_CM, 0, MAX_PASSEPARTOUT_CM),
           matColor: frame.matColor || DEFAULT_PASSEPARTOUT_COLOR,
@@ -494,6 +496,7 @@ function App() {
       });
       setWall(wallOptions[layout.wall] ? layout.wall : 'warm');
       setSnapToGrid(Boolean(layout.snapToGrid));
+      setShowCmGrid(Boolean(layout.showCmGrid));
       setSelectedId(null);
       showMessage('Layout loaded.');
     } catch (error) {
@@ -557,6 +560,9 @@ function App() {
         <button className={`button ghost ${snapToGrid ? 'on' : ''}`} onClick={() => setSnapToGrid((value) => !value)}>
           <Grid3X3 size={16} /> Snap to grid
         </button>
+        <button className={`button ghost ${showCmGrid ? 'on' : ''}`} onClick={() => setShowCmGrid((value) => !value)}>
+          <Grid3X3 size={16} /> Show cm grid
+        </button>
 
         <div className="divider" />
         <button className="button ghost" onClick={exportPng} disabled={capturing}>
@@ -571,7 +577,7 @@ function App() {
         <div className="top-note">Drag, resize, rotate, and frame your personal gallery wall.</div>
         <section
           ref={canvasRef}
-          className={`wall-canvas ${wallOptions[wall].className} ${snapToGrid ? 'grid-on' : ''}`}
+          className={`wall-canvas ${wallOptions[wall].className} ${snapToGrid ? 'grid-on' : ''} ${showCmGrid ? 'cm-grid-on' : ''}`}
           onPointerMove={onPointerMove}
           onPointerUp={endPointer}
           onPointerCancel={endPointer}
@@ -582,6 +588,16 @@ function App() {
             addFiles(event.dataTransfer.files);
           }}
         >
+          {showCmGrid && canvasRect && (
+            <div className="cm-grid-overlay" aria-hidden="true">
+              {Array.from({ length: Math.floor(canvasRect.width / cmToPx(50)) + 1 }, (_, i) => (
+                <span key={`x-${i}`} className="cm-label x-label" style={{ left: cmToPx(i * 50) }}>{i * 50} cm</span>
+              ))}
+              {Array.from({ length: Math.floor(canvasRect.height / cmToPx(50)) + 1 }, (_, i) => (
+                <span key={`y-${i}`} className="cm-label y-label" style={{ top: cmToPx(i * 50) }}>{i * 50} cm</span>
+              ))}
+            </div>
+          )}
           {!frames.length && (
             <div className="empty-state">
               <ImagePlus size={42} />
@@ -606,7 +622,7 @@ function App() {
                   height: frame.h,
                   zIndex: frame.z,
                   transform: `rotate(${frame.rotation}deg) ${draggingId === frame.id ? 'scale(1.02)' : 'scale(1)'}`,
-                  borderWidth: frame.borderWidth ?? FRAME_BORDER,
+                  borderWidth: cmToPx(frame.borderWidthCm ?? DEFAULT_FRAME_BORDER_CM),
                   borderImage: frame.material === 'black' || frame.material === 'white' || frame.material === 'custom' ? undefined : `${materialBackground} 30`,
                   borderColor: frame.material === 'black' || frame.material === 'white' || frame.material === 'custom' ? materialBackground : undefined,
                   background: materialBackground,
@@ -661,13 +677,14 @@ function App() {
               <p className="measurement-note">Outer frame size. All frames use the same scale, so 60 cm is exactly twice 30 cm on the wall.</p>
               <label className="range-row">
                 <span>Frame width</span>
-                <output>{Math.round(selected.borderWidth ?? FRAME_BORDER)} px</output>
+                <output>{selected.borderWidthCm ?? DEFAULT_FRAME_BORDER_CM} cm</output>
                 <input
                   type="range"
-                  min={MIN_FRAME_BORDER}
-                  max={MAX_FRAME_BORDER}
-                  value={selected.borderWidth ?? FRAME_BORDER}
-                  onChange={(e) => updateFrame(selected.id, { borderWidth: Number(e.target.value) })}
+                  min={MIN_FRAME_BORDER_CM}
+                  max={MAX_FRAME_BORDER_CM}
+                  step="0.5"
+                  value={selected.borderWidthCm ?? DEFAULT_FRAME_BORDER_CM}
+                  onChange={(e) => updateFrame(selected.id, { borderWidthCm: Number(e.target.value) })}
                 />
               </label>
               <label className="range-row">
@@ -745,6 +762,11 @@ h3 { margin: 0 0 10px; font-size: 12px; color: #77706A; letter-spacing: .12em; t
 .wall-linen { --wall-bg: #EDE5D7; }
 .wall-linen::after { opacity: .28; background-image: repeating-linear-gradient(90deg, rgba(122,97,63,.08) 0 1px, transparent 1px 9px), repeating-linear-gradient(0deg, rgba(122,97,63,.06) 0 1px, transparent 1px 7px), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.6' numOctaves='3'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='.35'/%3E%3C/svg%3E"); }
 .grid-on { background-image: linear-gradient(rgba(90,90,90,.10) 1px, transparent 1px), linear-gradient(90deg, rgba(90,90,90,.10) 1px, transparent 1px); background-size: ${GRID_SIZE}px ${GRID_SIZE}px; }
+.cm-grid-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(rgba(74,144,217,.18) 1px, transparent 1px), linear-gradient(90deg, rgba(74,144,217,.18) 1px, transparent 1px); background-size: ${cmToPx(10)}px ${cmToPx(10)}px; }
+.cm-grid-overlay::after { content: ''; position: absolute; inset: 0; background-image: linear-gradient(rgba(74,144,217,.34) 1px, transparent 1px), linear-gradient(90deg, rgba(74,144,217,.34) 1px, transparent 1px); background-size: ${cmToPx(50)}px ${cmToPx(50)}px; }
+.cm-label { position: absolute; z-index: 1; color: rgba(43,92,138,.82); background: rgba(255,255,255,.72); border: 1px solid rgba(74,144,217,.22); border-radius: 999px; padding: 2px 5px; font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.x-label { top: 6px; transform: translateX(4px); }
+.y-label { left: 6px; transform: translateY(4px); }
 .empty-state { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; color: #81776D; gap: 8px; pointer-events: none; }
 .empty-state svg { margin: auto; opacity: .55; }
 .empty-state p { margin: 0; font-size: 18px; color: #55504B; }
